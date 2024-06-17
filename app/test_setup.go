@@ -12,6 +12,7 @@ import (
 	"github.com/cometbft/cometbft/crypto/secp256k1"
 	"github.com/cometbft/cometbft/libs/log"
 	tmtypes "github.com/cometbft/cometbft/types"
+	"github.com/cosmos/cosmos-sdk/baseapp"
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
 	cryptocodec "github.com/cosmos/cosmos-sdk/crypto/codec"
 	"github.com/cosmos/cosmos-sdk/testutil/mock"
@@ -27,6 +28,7 @@ import (
 
 	cmdcfg "github.com/Stride-Labs/stride/v22/cmd/strided/config"
 	testutil "github.com/Stride-Labs/stride/v22/testutil"
+	"github.com/Stride-Labs/stride/v22/utils"
 )
 
 const Bech32Prefix = "stride"
@@ -45,7 +47,7 @@ func SetupConfig() {
 }
 
 // Initializes a new StrideApp without IBC functionality
-func InitStrideTestApp(initChain bool) *StrideApp {
+func InitStrideTestApp(initChain bool, chainID string) *StrideApp {
 	db := cometbftdb.NewMemDB()
 	app := NewStrideApp(
 		log.NewNopLogger(),
@@ -58,6 +60,7 @@ func InitStrideTestApp(initChain bool) *StrideApp {
 		MakeEncodingConfig(),
 		simtestutil.EmptyAppOptions{},
 		[]wasmkeeper.Option{},
+		baseapp.SetChainID(chainID),
 	)
 	if initChain {
 		genesisState := GenesisStateWithValSet(app)
@@ -68,6 +71,7 @@ func InitStrideTestApp(initChain bool) *StrideApp {
 
 		app.InitChain(
 			abci.RequestInitChain{
+				ChainId:         chainID,
 				Validators:      []abci.ValidatorUpdate{},
 				ConsensusParams: simtestutil.DefaultConsensusParams,
 				AppStateBytes:   stateBytes,
@@ -181,7 +185,7 @@ func GenesisStateWithValSet(app *StrideApp) GenesisState {
 func InitStrideIBCTestingApp(initValPowers []types.ValidatorUpdate) func() (ibctesting.TestingApp, map[string]json.RawMessage) {
 	return func() (ibctesting.TestingApp, map[string]json.RawMessage) {
 		encoding := appconsumer.MakeTestEncodingConfig()
-		app := InitStrideTestApp(false)
+		app := InitStrideTestApp(false, utils.StrideLocalChainID)
 		genesisState := NewDefaultGenesisState()
 
 		// Feed consumer genesis with provider validators

@@ -40,7 +40,7 @@ import (
 )
 
 var (
-	StrideChainID   = "STRIDE"
+	StrideChainID   = utils.StrideLocalChainID
 	ProviderChainID = "PROVIDER"
 	FirstClientId   = "07-tendermint-0"
 
@@ -80,7 +80,7 @@ type AppTestHelper struct {
 
 // AppTestHelper Constructor
 func (s *AppTestHelper) Setup() {
-	s.App = app.InitStrideTestApp(true)
+	s.App = app.InitStrideTestApp(true, StrideChainID)
 	s.Ctx = s.App.BaseApp.NewContext(false, tmtypesproto.Header{Height: 1, ChainID: StrideChainID})
 	s.QueryHelper = &baseapp.QueryServiceTestHelper{
 		GRPCQueryRouter: s.App.GRPCQueryRouter(),
@@ -110,7 +110,7 @@ func (s *AppTestHelper) Setup() {
 // and need access to the TestHelper attributes and keepers (e.g. genesis tests)
 func SetupSuitelessTestHelper() SuitelessAppTestHelper {
 	s := SuitelessAppTestHelper{}
-	s.App = app.InitStrideTestApp(true)
+	s.App = app.InitStrideTestApp(true, StrideChainID)
 	s.Ctx = s.App.BaseApp.NewContext(false, tmtypesproto.Header{Height: 1, ChainID: StrideChainID})
 	return s
 }
