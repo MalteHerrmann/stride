@@ -414,7 +414,11 @@ func NewStrideApp(
 		evmtypes.StoreKey,
 		feemarkettypes.StoreKey,
 	)
-	tkeys := sdk.NewTransientStoreKeys(paramstypes.TStoreKey)
+	tkeys := sdk.NewTransientStoreKeys(
+		paramstypes.TStoreKey,
+		evmtypes.TransientKey,
+		feemarkettypes.TransientKey,
+	)
 	memKeys := sdk.NewMemoryStoreKeys(capabilitytypes.MemStoreKey)
 
 	app := &StrideApp{
