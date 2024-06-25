@@ -8,9 +8,9 @@
 
 set -eu 
 
-STRIDE_HOME=~/.stride-local
+STRIDE_HOME=$HOME/.stride-local
 STRIDED="build/strided --home ${STRIDE_HOME}"
-CHAIN_ID=stride-local-1
+CHAIN_ID=stride_9005-1
 DENOM=ustrd
 
 STRIDE_ADMIN_MNEMONIC="tone cause tribe this switch near host damage idle fragile antique tail soda alien depth write wool they rapid unfold body scan pledge soft"
@@ -29,7 +29,7 @@ genesis_json="${STRIDE_HOME}/config/genesis.json"
 
 rm -rf ${STRIDE_HOME}
 
-$STRIDED init stride-local --chain-id $CHAIN_ID --overwrite
+$STRIDED init "$STRIDE_HOME" --chain-id $CHAIN_ID --overwrite
 
 sed -i -E "s|minimum-gas-prices = \".*\"|minimum-gas-prices = \"0${DENOM}\"|g" $app_toml
 sed -i -E '/\[api\]/,/^enable = .*$/ s/^enable = .*$/enable = true/' $app_toml
@@ -58,23 +58,25 @@ jq '.app_state.ccvconsumer.params.unbonding_period = $newVal' --arg newVal "$UNB
 
 rm -rf ~/.stride-loca1
 
-echo "$STRIDE_VAL_MNEMONIC" | $STRIDED keys add val --recover --keyring-backend=test 
-$STRIDED add-genesis-account $($STRIDED keys show val -a) 100000000000${DENOM}
+echo "$STRIDE_VAL_MNEMONIC" | $STRIDED keys add val --recover --keyring-backend=test --home "$STRIDE_HOME"
+$STRIDED add-genesis-account $($STRIDED keys show val -a --home "$STRIDE_HOME") 100000000000${DENOM} --home "$STRIDE_HOME"
 
-echo "$STRIDE_ADMIN_MNEMONIC" | $STRIDED keys add admin --recover --keyring-backend=test 
-$STRIDED add-genesis-account $($STRIDED keys show admin -a) 100000000000${DENOM}
+echo "$STRIDE_ADMIN_MNEMONIC" | $STRIDED keys add admin --recover --keyring-backend=test --home "$STRIDE_HOME"
+$STRIDED add-genesis-account $($STRIDED keys show admin -a --home "$STRIDE_HOME") 100000000000${DENOM} --home "$STRIDE_HOME"
 
 # Start the daemon in the background
-$STRIDED start & 
+$STRIDED start --home "$STRIDE_HOME" &
 pid=$!
 sleep 10
 
 # Add a governator
 echo "Adding governator..."
-pub_key=$($STRIDED tendermint show-validator)
+pub_key=$($STRIDED tendermint show-validator --home "$STRIDE_HOME")
 $STRIDED tx staking create-validator --amount 1000000000${DENOM} --from val \
     --pubkey=$pub_key --commission-rate="0.10" --commission-max-rate="0.20" \
-    --commission-max-change-rate="0.01" --min-self-delegation="1" -y 
+    --commission-max-change-rate="0.01" --min-self-delegation="1" -y \
+    --home "$STRIDE_HOME"
 
 # Bring the daemon back to the foreground
+echo "Running process: $pid"
 wait $pid
