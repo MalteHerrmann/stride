@@ -4,8 +4,8 @@ import (
 	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/codec"
 	"github.com/cosmos/cosmos-sdk/codec/types"
-	"github.com/cosmos/cosmos-sdk/std"
 	"github.com/cosmos/cosmos-sdk/x/auth/tx"
+	evmosenccodec "github.com/evmos/evmos/v18/encoding/codec"
 )
 
 // This data structure (EncodingConfig) is heavily inspired by Quicksilver. https://github.com/ingenuity-build/quicksilver/blob/main/app/encoding.go
@@ -30,8 +30,8 @@ func MakeEncodingConfig() EncodingConfig {
 		Amino:             amino,
 	}
 
-	std.RegisterLegacyAminoCodec(encodingConfig.Amino)
-	std.RegisterInterfaces(encodingConfig.InterfaceRegistry)
+	evmosenccodec.RegisterLegacyAminoCodec(encodingConfig.Amino)
+	evmosenccodec.RegisterInterfaces(encodingConfig.InterfaceRegistry)
 	ModuleBasics.RegisterLegacyAminoCodec(encodingConfig.Amino)
 	ModuleBasics.RegisterInterfaces(encodingConfig.InterfaceRegistry)
 	return encodingConfig
