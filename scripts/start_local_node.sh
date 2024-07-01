@@ -36,6 +36,9 @@ $STRIDED init "$STRIDE_HOME" --chain-id $CHAIN_ID --overwrite
 sed -i -E "s|minimum-gas-prices = \".*\"|minimum-gas-prices = \"0${DENOM}\"|g" $app_toml
 sed -i -E '/\[api\]/,/^enable = .*$/ s/^enable = .*$/enable = true/' $app_toml
 
+# Enable JSON-RPC
+sed -i -E '/\[json-rpc\]/,/^enable = .*$/ s/^enable = .*$/enable = true/' $app_toml
+
 sed -i -E "s|chain-id = \"\"|chain-id = \"${CHAIN_ID}\"|g" $client_toml
 sed -i -E "s|keyring-backend = \"os\"|keyring-backend = \"test\"|g" $client_toml
 sed -i -E "s|node = \".*\"|node = \"tcp://localhost:26657\"|g" $client_toml
@@ -79,6 +82,7 @@ $STRIDED tx staking create-validator --amount 1000000000${DENOM} --from val \
     --commission-max-change-rate="0.01" --min-self-delegation="1" -y \
     --home "$STRIDE_HOME"
 
-# Bring the daemon back to the foreground
-echo "Running process: $pid"
-wait $pid
+
+ # Bring the daemon back to the foreground
+ echo "Running process: $pid"
+ wait $pid

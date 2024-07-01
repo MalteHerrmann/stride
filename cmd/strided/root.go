@@ -43,6 +43,7 @@ import (
 	evmosclient "github.com/evmos/evmos/v18/client"
 	evmoskeyring "github.com/evmos/evmos/v18/crypto/keyring"
 	evmosserver "github.com/evmos/evmos/v18/server"
+	evmosserverconfig "github.com/evmos/evmos/v18/server/config"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/spf13/cast"
 	"github.com/spf13/cobra"
@@ -127,12 +128,18 @@ func initAppConfig() (string, interface{}) {
 	type CustomAppConfig struct {
 		serverconfig.Config
 
+		// evmOS configuration
+		EVM     evmosserverconfig.EVMConfig     `mapstructure:"evm"`
+		JSONRPC evmosserverconfig.JSONRPCConfig `mapstructure:"json-rpc"`
+		TLS     evmosserverconfig.TLSConfig     `mapstructure:"tls"`
+
 		Wasm wasmtypes.WasmConfig `mapstructure:"wasm"`
 	}
 
 	// Optionally allow the chain developer to overwrite the SDK's default
 	// server config.
 	srvCfg := serverconfig.DefaultConfig()
+
 	// The SDK's default minimum gas price is set to "" (empty value) inside
 	// app.toml. If left empty by validators, the node will halt on startup.
 	// However, the chain developer can set a default app.toml value for their
@@ -157,10 +164,16 @@ func initAppConfig() (string, interface{}) {
 	// TODO [CW]: Confirm these defaults are fine
 	customAppConfig := CustomAppConfig{
 		Config: *srvCfg,
-		Wasm:   wasmtypes.DefaultWasmConfig(),
+
+		EVM:     *evmosserverconfig.DefaultEVMConfig(),
+		JSONRPC: *evmosserverconfig.DefaultJSONRPCConfig(),
+		TLS:     *evmosserverconfig.DefaultTLSConfig(),
+
+		Wasm: wasmtypes.DefaultWasmConfig(),
 	}
 
-	customAppTemplate := serverconfig.DefaultConfigTemplate + `
+	customAppTemplate := serverconfig.DefaultConfigTemplate +
+		evmosserverconfig.DefaultEVMConfigTemplate + `
 [wasm]
 # This is the maximum sdk gas (wasm and storage) that we allow for any x/wasm "smart" queries
 query_gas_limit = 300000
@@ -183,8 +196,8 @@ func initRootCmd(rootCmd *cobra.Command, encodingConfig app.EncodingConfig) {
 		genutilcli.MigrateGenesisCmd(),
 		genutilcli.GenTxCmd(app.ModuleBasics, encodingConfig.TxConfig, banktypes.GenesisBalancesIterator{}, app.DefaultNodeHome),
 		genutilcli.ValidateGenesisCmd(app.ModuleBasics),
-		evmosclient.AddGenesisAccountCmd(app.DefaultNodeHome),
-		// AddGenesisAccountCmd(app.DefaultNodeHome),
+		//evmosclient.AddGenesisAccountCmd(app.DefaultNodeHome),
+		AddGenesisAccountCmd(app.DefaultNodeHome),
 		tmcli.NewCompletionCmd(rootCmd, true),
 		debug.Cmd(),
 		config.Cmd(),
