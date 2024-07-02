@@ -32,7 +32,6 @@ import (
 	"github.com/cosmos/cosmos-sdk/types/module"
 	"github.com/cosmos/cosmos-sdk/version"
 	"github.com/cosmos/cosmos-sdk/x/auth"
-	"github.com/cosmos/cosmos-sdk/x/auth/ante"
 	authkeeper "github.com/cosmos/cosmos-sdk/x/auth/keeper"
 	authsims "github.com/cosmos/cosmos-sdk/x/auth/simulation"
 	authtx "github.com/cosmos/cosmos-sdk/x/auth/tx"
@@ -115,6 +114,9 @@ import (
 	ccvdistr "github.com/cosmos/interchain-security/v4/x/ccv/democracy/distribution"
 	ccvgov "github.com/cosmos/interchain-security/v4/x/ccv/democracy/governance"
 	ccvstaking "github.com/cosmos/interchain-security/v4/x/ccv/democracy/staking"
+	evmosante "github.com/evmos/evmos/v18/app/ante"
+	evmante "github.com/evmos/evmos/v18/app/ante/evm"
+	evmostypes "github.com/evmos/evmos/v18/types"
 	evmosvesting "github.com/evmos/vesting/x/vesting"
 	evmosvestingclient "github.com/evmos/vesting/x/vesting/client"
 	evmosvestingkeeper "github.com/evmos/vesting/x/vesting/keeper"
@@ -1113,14 +1115,25 @@ func NewStrideApp(
 	app.SetInitChainer(app.InitChainer)
 	app.SetBeginBlocker(app.BeginBlocker)
 
-	anteHandler, err := NewAnteHandler(
+	maxGasWanted := cast.ToUint64(appOpts.Get(srvflags.EVMMaxTxGasWanted))
+
+	anteHandler := NewAnteHandler(
 		HandlerOptions{
-			HandlerOptions: ante.HandlerOptions{
-				AccountKeeper:   app.AccountKeeper,
-				BankKeeper:      app.BankKeeper,
-				FeegrantKeeper:  app.FeeGrantKeeper,
-				SignModeHandler: encodingConfig.TxConfig.SignModeHandler(),
-				SigGasConsumer:  ante.DefaultSigVerificationGasConsumer,
+			HandlerOptions: evmosante.HandlerOptions{
+				Cdc:                    app.appCodec,
+				AccountKeeper:          app.AccountKeeper,
+				BankKeeper:             app.BankKeeper,
+				ExtensionOptionChecker: evmostypes.HasDynamicFeeExtensionOption,
+				EvmKeeper:              app.EVMKeeper,
+				StakingKeeper:          app.StakingKeeper,
+				FeegrantKeeper:         app.FeeGrantKeeper,
+				DistributionKeeper:     app.DistrKeeper,
+				IBCKeeper:              app.IBCKeeper,
+				FeeMarketKeeper:        app.FeeMarketKeeper,
+				SignModeHandler:        encodingConfig.TxConfig.SignModeHandler(),
+				SigGasConsumer:         evmosante.SigVerificationGasConsumer,
+				MaxTxGasWanted:         maxGasWanted,
+				TxFeeChecker:           evmante.NewDynamicFeeChecker(app.EVMKeeper),
 			},
 			IBCKeeper:         app.IBCKeeper,
 			ConsumerKeeper:    app.ConsumerKeeper,
@@ -1129,9 +1142,6 @@ func NewStrideApp(
 			WasmKeeper:        &app.WasmKeeper,
 		},
 	)
-	if err != nil {
-		panic(err)
-	}
 
 	app.SetAnteHandler(anteHandler)
 	app.SetEndBlocker(app.EndBlocker)
