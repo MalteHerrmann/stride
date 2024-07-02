@@ -50,6 +50,11 @@ jq '(.app_state.epochs.epochs[] | select(.identifier=="stride_epoch") ).duration
 jq '.app_state.gov.params.max_deposit_period = $newVal' --arg newVal "$MAX_DEPOSIT_PERIOD" $genesis_json > json.tmp && mv json.tmp $genesis_json
 jq '.app_state.gov.params.voting_period = $newVal' --arg newVal "$VOTING_PERIOD" $genesis_json > json.tmp && mv json.tmp $genesis_json
 
+# Adjust EVM parameters
+jq '.app_state.evm.params.active_precompiles=[]' $genesis_json > json.tmp && mv json.tmp $genesis_json
+jq '.app_state.evm.params.evm_channels=[]' $genesis_json > json.tmp && mv json.tmp $genesis_json
+jq '.app_state.evm.params.evm_denom="ustrd"' $genesis_json > json.tmp && mv json.tmp $genesis_json
+
 jq "del(.app_state.interchain_accounts)" $genesis_json > json.tmp && mv json.tmp $genesis_json
 interchain_accts=$(cat dockernet/config/ica_controller.json)
 jq ".app_state += $interchain_accts" $genesis_json > json.tmp && mv json.tmp $genesis_json
@@ -64,10 +69,10 @@ jq '.app_state.ccvconsumer.params.unbonding_period = $newVal' --arg newVal "$UNB
 rm -rf ~/.stride-loca1
 
 echo "$STRIDE_VAL_MNEMONIC" | $STRIDED keys add val --recover --keyring-backend=test --home "$STRIDE_HOME"
-$STRIDED add-genesis-account $($STRIDED keys show val -a --home "$STRIDE_HOME") 100000000000${DENOM} --home "$STRIDE_HOME"
+$STRIDED add-genesis-account $($STRIDED keys show val -a --home "$STRIDE_HOME") 100000000000000000000${DENOM} --home "$STRIDE_HOME"
 
 echo "$STRIDE_ADMIN_MNEMONIC" | $STRIDED keys add admin --recover --keyring-backend=test --home "$STRIDE_HOME"
-$STRIDED add-genesis-account $($STRIDED keys show admin -a --home "$STRIDE_HOME") 100000000000${DENOM} --home "$STRIDE_HOME"
+$STRIDED add-genesis-account $($STRIDED keys show admin -a --home "$STRIDE_HOME") 1000000000000000000000${DENOM} --home "$STRIDE_HOME"
 
 # Start the daemon in the background
 $STRIDED start --home "$STRIDE_HOME" &
@@ -80,6 +85,8 @@ pub_key=$($STRIDED tendermint show-validator --home "$STRIDE_HOME")
 $STRIDED tx staking create-validator --amount 1000000000${DENOM} --from val \
     --pubkey=$pub_key --commission-rate="0.10" --commission-max-rate="0.20" \
     --commission-max-change-rate="0.01" --min-self-delegation="1" -y \
+    --fees 875000000000000ustrd \
+    --gas 250000 \
     --home "$STRIDE_HOME"
 
 
