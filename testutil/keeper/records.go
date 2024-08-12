@@ -8,13 +8,15 @@ import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 
 	strideapp "github.com/Stride-Labs/stride/v22/app"
+	"github.com/Stride-Labs/stride/v22/utils"
 	"github.com/Stride-Labs/stride/v22/x/records/keeper"
 )
 
 func RecordsKeeper(t testing.TB) (*keeper.Keeper, sdk.Context) {
-	app := strideapp.InitStrideTestApp(true)
+	chainID := utils.StrideLocalChainID
+	app := strideapp.InitStrideTestApp(true, chainID)
 	recordKeeper := app.RecordsKeeper
-	ctx := app.BaseApp.NewContext(false, tmproto.Header{Height: 1, ChainID: "stride-1", Time: time.Now().UTC()})
+	ctx := app.BaseApp.NewContext(false, tmproto.Header{Height: 1, ChainID: chainID, Time: time.Now().UTC()})
 
 	return &recordKeeper, ctx
 }

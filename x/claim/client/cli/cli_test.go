@@ -258,7 +258,7 @@ func (s *IntegrationTestSuite) TestCmdTxCreateAirdrop() {
 
 	airdrop := claimtypes.Airdrop{
 		AirdropIdentifier:  "evmos",
-		ChainId:            "evmos-1",
+		ChainId:            "evmos_9000-1",
 		AirdropStartTime:   time.Now(),
 		AirdropDuration:    claimtypes.DefaultAirdropDuration,
 		DistributorAddress: distributorAddrs[1],

@@ -32,7 +32,6 @@ import (
 	"github.com/cosmos/cosmos-sdk/types/module"
 	"github.com/cosmos/cosmos-sdk/version"
 	"github.com/cosmos/cosmos-sdk/x/auth"
-	"github.com/cosmos/cosmos-sdk/x/auth/ante"
 	authkeeper "github.com/cosmos/cosmos-sdk/x/auth/keeper"
 	authsims "github.com/cosmos/cosmos-sdk/x/auth/simulation"
 	authtx "github.com/cosmos/cosmos-sdk/x/auth/tx"
@@ -115,6 +114,9 @@ import (
 	ccvdistr "github.com/cosmos/interchain-security/v4/x/ccv/democracy/distribution"
 	ccvgov "github.com/cosmos/interchain-security/v4/x/ccv/democracy/governance"
 	ccvstaking "github.com/cosmos/interchain-security/v4/x/ccv/democracy/staking"
+	evmosante "github.com/evmos/evmos/v18/app/ante"
+	evmante "github.com/evmos/evmos/v18/app/ante/evm"
+	evmostypes "github.com/evmos/evmos/v18/types"
 	evmosvesting "github.com/evmos/vesting/x/vesting"
 	evmosvestingclient "github.com/evmos/vesting/x/vesting/client"
 	evmosvestingkeeper "github.com/evmos/vesting/x/vesting/keeper"
@@ -158,6 +160,15 @@ import (
 	staketia "github.com/Stride-Labs/stride/v22/x/staketia"
 	staketiakeeper "github.com/Stride-Labs/stride/v22/x/staketia/keeper"
 	staketiatypes "github.com/Stride-Labs/stride/v22/x/staketia/types"
+
+	"github.com/ethereum/go-ethereum/core/vm"
+	srvflags "github.com/evmos/evmos/v18/server/flags"
+	"github.com/evmos/evmos/v18/x/evm"
+	evmkeeper "github.com/evmos/evmos/v18/x/evm/keeper"
+	evmtypes "github.com/evmos/evmos/v18/x/evm/types"
+	"github.com/evmos/evmos/v18/x/feemarket"
+	feemarketkeeper "github.com/evmos/evmos/v18/x/feemarket/keeper"
+	feemarkettypes "github.com/evmos/evmos/v18/x/feemarket/types"
 )
 
 const (
@@ -227,6 +238,9 @@ var (
 		stakedym.AppModuleBasic{},
 		wasm.AppModuleBasic{},
 		ibchooks.AppModuleBasic{},
+		// evmOS modules
+		evm.AppModuleBasic{},
+		feemarket.AppModuleBasic{},
 	)
 
 	// module account permissions
@@ -251,6 +265,9 @@ var (
 		stakedymtypes.ModuleName:                      {authtypes.Minter, authtypes.Burner},
 		stakedymtypes.FeeAddress:                      nil,
 		wasmtypes.ModuleName:                          {authtypes.Burner},
+		// evmOS modules
+		evmtypes.ModuleName:       {authtypes.Minter, authtypes.Burner}, // used for secure addition and subtraction of balance using module account
+		feemarkettypes.ModuleName: nil,
 	}
 )
 
@@ -311,6 +328,10 @@ type StrideApp struct {
 	WasmKeeper            wasmkeeper.Keeper
 	ContractKeeper        *wasmkeeper.PermissionedKeeper
 	IBCHooksKeeper        ibchookskeeper.Keeper
+
+	// evmOS Keepers
+	EVMKeeper       *evmkeeper.Keeper
+	FeeMarketKeeper feemarketkeeper.Keeper
 
 	// Middleware for IBCHooks
 	Ics20WasmHooks   *ibchooks.WasmHooks
@@ -391,8 +412,15 @@ func NewStrideApp(
 		stakedymtypes.StoreKey,
 		wasmtypes.StoreKey,
 		ibchookstypes.StoreKey,
+		// evmOS store keys
+		evmtypes.StoreKey,
+		feemarkettypes.StoreKey,
 	)
-	tkeys := sdk.NewTransientStoreKeys(paramstypes.TStoreKey)
+	tkeys := sdk.NewTransientStoreKeys(
+		paramstypes.TStoreKey,
+		evmtypes.TransientKey,
+		feemarkettypes.TransientKey,
+	)
 	memKeys := sdk.NewMemoryStoreKeys(capabilitytypes.MemStoreKey)
 
 	app := &StrideApp{
@@ -466,6 +494,24 @@ func NewStrideApp(
 	// NOTE: stakingKeeper above is passed by reference, so that it will contain these hooks
 	app.StakingKeeper.SetHooks(
 		stakingtypes.NewMultiStakingHooks(app.DistrKeeper.Hooks(), app.ClaimKeeper.Hooks()),
+	)
+
+	// evmOS keepers
+	app.FeeMarketKeeper = feemarketkeeper.NewKeeper(
+		appCodec, authtypes.NewModuleAddress(govtypes.ModuleName),
+		keys[feemarkettypes.StoreKey],
+		tkeys[feemarkettypes.TransientKey],
+		app.GetSubspace(feemarkettypes.ModuleName),
+	)
+
+	tracer := cast.ToString(appOpts.Get(srvflags.EVMTracer))
+
+	app.EVMKeeper = evmkeeper.NewKeeper(
+		appCodec, keys[evmtypes.StoreKey], tkeys[evmtypes.TransientKey], authtypes.NewModuleAddress(govtypes.ModuleName),
+		app.AccountKeeper, app.BankKeeper, &app.StakingKeeper, app.FeeMarketKeeper,
+		tracer, app.GetSubspace(evmtypes.ModuleName),
+	).WithPrecompiles(
+		vm.PrecompiledContractsBerlin,
 	)
 
 	// Add ICS Consumer Keeper
@@ -770,6 +816,8 @@ func NewStrideApp(
 		scopedICAHostKeeper,
 		app.MsgServiceRouter(),
 	)
+	app.ICAHostKeeper.WithQueryRouter(bApp.GRPCQueryRouter())
+
 	icaModule := ica.NewAppModule(&app.ICAControllerKeeper, &app.ICAHostKeeper)
 
 	// Create the middleware stacks
@@ -887,6 +935,9 @@ func NewStrideApp(
 		icaoracleModule,
 		stakeTiaModule,
 		stakeDymModule,
+		// evmOS modules
+		evm.NewAppModule(app.EVMKeeper, app.AccountKeeper, app.GetSubspace(evmtypes.ModuleName)),
+		feemarket.NewAppModule(app.FeeMarketKeeper, app.GetSubspace(feemarkettypes.ModuleName)),
 	)
 
 	// During begin block slashing happens after distr.BeginBlocker so that
@@ -930,6 +981,9 @@ func NewStrideApp(
 		stakedymtypes.ModuleName,
 		wasmtypes.ModuleName,
 		ibchookstypes.ModuleName,
+		// evmOS modules
+		feemarkettypes.ModuleName,
+		evmtypes.ModuleName,
 	)
 
 	app.mm.SetOrderEndBlockers(
@@ -969,6 +1023,9 @@ func NewStrideApp(
 		stakedymtypes.ModuleName,
 		wasmtypes.ModuleName,
 		ibchookstypes.ModuleName,
+		// evmOS modules
+		evmtypes.ModuleName,
+		feemarkettypes.ModuleName,
 	)
 
 	// NOTE: The genutils module must occur after staking so that pools are
@@ -988,6 +1045,11 @@ func NewStrideApp(
 		govtypes.ModuleName,
 		minttypes.ModuleName,
 		crisistypes.ModuleName,
+		// evmOS modules
+		evmtypes.ModuleName,
+		// NOTE: feemarket module needs to be initialized before genutil module:
+		// gentx transactions use MinGasPriceDecorator.AnteHandle
+		feemarkettypes.ModuleName,
 		genutiltypes.ModuleName,
 		ibchost.ModuleName,
 		evidencetypes.ModuleName,
@@ -1053,14 +1115,25 @@ func NewStrideApp(
 	app.SetInitChainer(app.InitChainer)
 	app.SetBeginBlocker(app.BeginBlocker)
 
-	anteHandler, err := NewAnteHandler(
+	maxGasWanted := cast.ToUint64(appOpts.Get(srvflags.EVMMaxTxGasWanted))
+
+	anteHandler := NewAnteHandler(
 		HandlerOptions{
-			HandlerOptions: ante.HandlerOptions{
-				AccountKeeper:   app.AccountKeeper,
-				BankKeeper:      app.BankKeeper,
-				FeegrantKeeper:  app.FeeGrantKeeper,
-				SignModeHandler: encodingConfig.TxConfig.SignModeHandler(),
-				SigGasConsumer:  ante.DefaultSigVerificationGasConsumer,
+			HandlerOptions: evmosante.HandlerOptions{
+				Cdc:                    app.appCodec,
+				AccountKeeper:          app.AccountKeeper,
+				BankKeeper:             app.BankKeeper,
+				ExtensionOptionChecker: evmostypes.HasDynamicFeeExtensionOption,
+				EvmKeeper:              app.EVMKeeper,
+				StakingKeeper:          app.StakingKeeper,
+				FeegrantKeeper:         app.FeeGrantKeeper,
+				DistributionKeeper:     app.DistrKeeper,
+				IBCKeeper:              app.IBCKeeper,
+				FeeMarketKeeper:        app.FeeMarketKeeper,
+				SignModeHandler:        encodingConfig.TxConfig.SignModeHandler(),
+				SigGasConsumer:         evmosante.SigVerificationGasConsumer,
+				MaxTxGasWanted:         maxGasWanted,
+				TxFeeChecker:           evmante.NewDynamicFeeChecker(app.EVMKeeper),
 			},
 			IBCKeeper:         app.IBCKeeper,
 			ConsumerKeeper:    app.ConsumerKeeper,
@@ -1069,9 +1142,6 @@ func NewStrideApp(
 			WasmKeeper:        &app.WasmKeeper,
 		},
 	)
-	if err != nil {
-		panic(err)
-	}
 
 	app.SetAnteHandler(anteHandler)
 	app.SetEndBlocker(app.EndBlocker)
@@ -1176,7 +1246,8 @@ func (app *StrideApp) ModuleAccountAddrs() map[string]bool {
 	return modAccAddrs
 }
 
-// ModuleAccountAddrs returns all the app's module account addresses.
+// BlacklistedModuleAccountAddrs defines the addresses of module accounts that are not allowed to receive
+// funds via bank transfers.
 func (app *StrideApp) BlacklistedModuleAccountAddrs() map[string]bool {
 	modAccAddrs := make(map[string]bool)
 	// DO NOT REMOVE: StringMapKeys fixes non-deterministic map iteration
@@ -1313,6 +1384,10 @@ func initParamsKeeper(appCodec codec.BinaryCodec, legacyAmino *codec.LegacyAmino
 	paramsKeeper.Subspace(icaoracletypes.ModuleName)
 	paramsKeeper.Subspace(claimtypes.ModuleName)
 	paramsKeeper.Subspace(wasmtypes.ModuleName)
+	// evmOS subspaces
+	paramsKeeper.Subspace(evmtypes.ModuleName).WithKeyTable(evmtypes.ParamKeyTable()) //nolint:staticcheck
+	paramsKeeper.Subspace(feemarkettypes.ModuleName).WithKeyTable(feemarkettypes.ParamKeyTable())
+
 	return paramsKeeper
 }
 

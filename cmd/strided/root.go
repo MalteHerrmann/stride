@@ -23,7 +23,6 @@ import (
 	config "github.com/cosmos/cosmos-sdk/client/config"
 	"github.com/cosmos/cosmos-sdk/client/debug"
 	"github.com/cosmos/cosmos-sdk/client/flags"
-	"github.com/cosmos/cosmos-sdk/client/keys"
 	"github.com/cosmos/cosmos-sdk/client/rpc"
 	"github.com/cosmos/cosmos-sdk/server"
 	serverconfig "github.com/cosmos/cosmos-sdk/server/config"
@@ -41,6 +40,10 @@ import (
 	"github.com/cosmos/cosmos-sdk/x/genutil"
 	genutilcli "github.com/cosmos/cosmos-sdk/x/genutil/client/cli"
 	genutiltypes "github.com/cosmos/cosmos-sdk/x/genutil/types"
+	evmosclient "github.com/evmos/evmos/v18/client"
+	evmoskeyring "github.com/evmos/evmos/v18/crypto/keyring"
+	evmosserver "github.com/evmos/evmos/v18/server"
+	evmosserverconfig "github.com/evmos/evmos/v18/server/config"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/spf13/cast"
 	"github.com/spf13/cobra"
@@ -67,6 +70,7 @@ func NewRootCmd() (*cobra.Command, app.EncodingConfig) {
 		WithInput(os.Stdin).
 		WithAccountRetriever(types.AccountRetriever{}).
 		WithHomeDir(app.DefaultNodeHome).
+		WithKeyringOptions(evmoskeyring.Option()).
 		WithViper("ICA")
 
 	rootCmd := &cobra.Command{
@@ -124,12 +128,18 @@ func initAppConfig() (string, interface{}) {
 	type CustomAppConfig struct {
 		serverconfig.Config
 
+		// evmOS configuration
+		EVM     evmosserverconfig.EVMConfig     `mapstructure:"evm"`
+		JSONRPC evmosserverconfig.JSONRPCConfig `mapstructure:"json-rpc"`
+		TLS     evmosserverconfig.TLSConfig     `mapstructure:"tls"`
+
 		Wasm wasmtypes.WasmConfig `mapstructure:"wasm"`
 	}
 
 	// Optionally allow the chain developer to overwrite the SDK's default
 	// server config.
 	srvCfg := serverconfig.DefaultConfig()
+
 	// The SDK's default minimum gas price is set to "" (empty value) inside
 	// app.toml. If left empty by validators, the node will halt on startup.
 	// However, the chain developer can set a default app.toml value for their
@@ -154,10 +164,16 @@ func initAppConfig() (string, interface{}) {
 	// TODO [CW]: Confirm these defaults are fine
 	customAppConfig := CustomAppConfig{
 		Config: *srvCfg,
-		Wasm:   wasmtypes.DefaultWasmConfig(),
+
+		EVM:     *evmosserverconfig.DefaultEVMConfig(),
+		JSONRPC: *evmosserverconfig.DefaultJSONRPCConfig(),
+		TLS:     *evmosserverconfig.DefaultTLSConfig(),
+
+		Wasm: wasmtypes.DefaultWasmConfig(),
 	}
 
-	customAppTemplate := serverconfig.DefaultConfigTemplate + `
+	customAppTemplate := serverconfig.DefaultConfigTemplate +
+		evmosserverconfig.DefaultEVMConfigTemplate + `
 [wasm]
 # This is the maximum sdk gas (wasm and storage) that we allow for any x/wasm "smart" queries
 query_gas_limit = 300000
@@ -180,6 +196,7 @@ func initRootCmd(rootCmd *cobra.Command, encodingConfig app.EncodingConfig) {
 		genutilcli.MigrateGenesisCmd(),
 		genutilcli.GenTxCmd(app.ModuleBasics, encodingConfig.TxConfig, banktypes.GenesisBalancesIterator{}, app.DefaultNodeHome),
 		genutilcli.ValidateGenesisCmd(app.ModuleBasics),
+		//evmosclient.AddGenesisAccountCmd(app.DefaultNodeHome),
 		AddGenesisAccountCmd(app.DefaultNodeHome),
 		tmcli.NewCompletionCmd(rootCmd, true),
 		debug.Cmd(),
@@ -187,7 +204,8 @@ func initRootCmd(rootCmd *cobra.Command, encodingConfig app.EncodingConfig) {
 	)
 
 	a := appCreator{encodingConfig}
-	server.AddCommands(rootCmd, app.DefaultNodeHome, a.newApp, a.appExport, addModuleInitFlags)
+	evmosserver.AddCommands(rootCmd, evmosserver.NewDefaultStartOptions(a.newApp, app.DefaultNodeHome), a.appExport, addModuleInitFlags)
+	// server.AddCommands(rootCmd, app.DefaultNodeHome, a.newApp, a.appExport, addModuleInitFlags)
 
 	// add keybase, auxiliary RPC, query, and tx child commands
 	rootCmd.AddCommand(
@@ -195,7 +213,7 @@ func initRootCmd(rootCmd *cobra.Command, encodingConfig app.EncodingConfig) {
 		queryCommand(),
 		txCommand(),
 		versionCommand(),
-		keys.Commands(app.DefaultNodeHome),
+		evmosclient.KeyCommands(app.DefaultNodeHome),
 	)
 }
 

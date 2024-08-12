@@ -8,13 +8,15 @@ import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 
 	strideapp "github.com/Stride-Labs/stride/v22/app"
+	"github.com/Stride-Labs/stride/v22/utils"
 	"github.com/Stride-Labs/stride/v22/x/stakeibc/keeper"
 )
 
 func StakeibcKeeper(t testing.TB) (*keeper.Keeper, sdk.Context) {
-	app := strideapp.InitStrideTestApp(true)
+	chainID := utils.StrideLocalChainID
+	app := strideapp.InitStrideTestApp(true, chainID)
 	stakeibcKeeper := app.StakeibcKeeper
-	ctx := app.BaseApp.NewContext(false, tmproto.Header{Height: 1, ChainID: "stride-1", Time: time.Now().UTC()})
+	ctx := app.BaseApp.NewContext(false, tmproto.Header{Height: 1, ChainID: chainID, Time: time.Now().UTC()})
 
 	return &stakeibcKeeper, ctx
 }
